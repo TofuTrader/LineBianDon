@@ -329,6 +329,25 @@ def on_message(event):
         reply(f"✅ 菜單已廣播給 {sent_count} 位成員！\n\n{broadcast_text}")
         return
 
+    # ── 提前結單 ──────────────────────────────────────
+    if text in ["結單", "提前結單", "現在結單", "結束訂購", "close"]:
+        orders = get_today_valid_orders()
+        if not orders:
+            reply("目前沒有有效訂單，無法結單。")
+            return
+        # 廣播結單預告
+        all_users = get_all_users()
+        for u in all_users:
+            uid = str(u.get("user_id", ""))
+            if uid and uid != user_id:
+                try:
+                    send_message(uid, f"🔔 {name} 發起提前結單，正在處理訂單...")
+                except Exception:
+                    pass
+        reply(f"🔔 正在結單，共 {len(orders)} 筆訂單，稍後發送個人通知...")
+        close_orders()
+        return
+
     # ── 操作說明 ──────────────────────────────────────
     if text in ["說明", "指令", "help", "Help", "HELP", "?", "？", "操作說明"]:
         close_h = CLOSE_HOUR
@@ -350,12 +369,66 @@ def on_message(event):
             "格式：【菜單】便當名稱 價錢 / 便當名稱 價錢\n"
             "  例：【菜單】雞腿飯 80 / 排骨飯 75 / 素食 70\n"
             "機器人會自動廣播給所有成員\n\n"
+            "📊 【查詢目前統計】\n"
+            "回覆：查統計  或  統計\n"
+            "顯示每個人點了什麼、各便當數量與總金額\n\n"
             f"🔔 【結單時間】每天 {close_h}:00 自動結單\n"
             "結單後發送個人通知（訂了什麼、扣多少、剩多少）\n\n"
+            "⏱ 【提前結單】\n"
+            "回覆：結單  或  提前結單\n"
+            "立即結單並扣款，結單後可再發新菜單開啟下一輪\n\n"
             "─────────────────────\n"
-            "指令速查：說明 ／ 餘額 ／ 不訂 ／ 取消"
+            "指令速查：說明 ／ 統計 ／ 餘額 ／ 不訂 ／ 取消 ／ 結單"
         )
         reply(help_text)
+        return
+
+    # ── 查詢目前訂單統計 ──────────────────────────────
+    if text in ["查統計", "統計", "現在訂單", "目前訂單", "查訂單"]:
+        orders = get_today_valid_orders()
+        if not orders:
+            reply("今天還沒有人訂便當喔 🍱")
+            return
+
+        # 各人訂單
+        person_orders = {}
+        for o in orders:
+            n = o["姓名"]
+            if n not in person_orders:
+                person_orders[n] = []
+            person_orders[n].append(o)
+
+        # 各便當統計
+        item_summary = {}
+        for o in orders:
+            key = o["便當"]
+            if key not in item_summary:
+                item_summary[key] = {"count": 0, "total": 0}
+            item_summary[key]["count"] += 1
+            item_summary[key]["total"] += int(o.get("金額", 0))
+
+        total_amount = sum(int(o.get("金額", 0)) for o in orders)
+
+        lines = [f"📋 目前訂單統計（結單前可更改）\n"]
+
+        # 每個人點了什麼
+        lines.append("👥 個人訂購明細：")
+        for n, p_orders in person_orders.items():
+            items_str = "、".join(
+                [f"{o['便當']}（${o['金額']}）" for o in p_orders]
+            )
+            person_total = sum(int(o.get("金額", 0)) for o in p_orders)
+            lines.append(f"  {n}：{items_str}　共 ${person_total}")
+
+        lines.append("")
+
+        # 各便當數量
+        lines.append("🍱 各便當統計：")
+        for item_name, stats in item_summary.items():
+            lines.append(f"  {item_name}：{stats['count']} 個，小計 ${stats['total']}")
+
+        lines.append(f"\n💰 總計：{len(orders)} 個便當，總金額 ${total_amount}")
+        reply("\n".join(lines))
         return
 
     # ── 查詢餘額 ──────────────────────────────────────
