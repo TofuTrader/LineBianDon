@@ -310,6 +310,17 @@ def on_message(event):
             reply("菜單格式不對，請用這個格式：\n【菜單】雞腿飯 80 / 排骨飯 75")
             return
 
+        # ── 已有進行中菜單時，擋下並提示 ─────────────────
+        if today_menu.get("items"):
+            existing_sender = today_menu.get("sender_name", "不明")
+            existing_orders = get_today_valid_orders()
+            order_count = len(existing_orders)
+            reply(
+                f"⚠️ 目前已有 {existing_sender} 發布的菜單，共 {order_count} 筆有效訂單尚未結單。\n\n"
+                f"請先輸入「結單」完成本輪訂購，結單後即可發布新菜單。"
+            )
+            return
+
         today_menu["sender_name"] = name
         today_menu["items"] = items
         today_menu["raw"] = text
