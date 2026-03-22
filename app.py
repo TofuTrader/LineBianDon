@@ -240,6 +240,15 @@ def get_today_valid_orders():
     records = ws.get_all_records()
     return [r for r in records if str(r.get("日期")) == today and str(r.get("狀態")) == "正常"]
 
+def mark_orders_closed():
+    """結單後把今天所有「正常」訂單標為「結單」，避免下一輪統計抓到"""
+    ws = ensure_order_sheet()
+    today = get_today_str()
+    records = ws.get_all_records()
+    for i, r in enumerate(records):
+        if str(r.get("日期")) == today and str(r.get("狀態")) == "正常":
+            ws.update_cell(i + 2, 5, "結單")
+
 # ── 等待狀態（記憶體）────────────────────────────────
 user_state = {}
 
@@ -536,9 +545,26 @@ def close_orders():
     total_amount = sum(int(o.get("金額", 0)) for o in orders)
 
     summary_lines = [f"🔔 今日結單通知（{get_today_str()}）\n"]
+
+    # 各人訂購明細
+    summary_lines.append("👥 個人訂購明細：")
+    for n, p_orders in {o["姓名"]: [] for o in orders}.items():
+        pass  # 先建好順序，下面重新處理
+    person_orders_tmp = {}
+    for o in orders:
+        person_orders_tmp.setdefault(o["姓名"], []).append(o)
+    for n, p_orders in person_orders_tmp.items():
+        items_str = "、".join([f"{o['便當']}(${o['金額']})" for o in p_orders])
+        person_total = sum(int(o.get("金額", 0)) for o in p_orders)
+        summary_lines.append(f"  {n}：{items_str}　共 ${person_total}")
+
+    # 各便當統計
+    summary_lines.append("")
+    summary_lines.append("🍱 便當統計：")
     for item_name, stats in item_summary.items():
-        summary_lines.append(f"▪ {item_name}：{stats['count']} 個，小計 ${stats['total']}")
-    summary_lines.append(f"\n📊 合計：{len(orders)} 個便當，總金額 ${total_amount}")
+        summary_lines.append(f"  {item_name}：{stats['count']} 個，小計 ${stats['total']}")
+
+    summary_lines.append(f"\n💰 合計：{len(orders)} 個便當，總金額 ${total_amount}")
     summary_text = "\n".join(summary_lines)
 
     # 對每個有訂便當的人扣款並發通知
@@ -581,6 +607,8 @@ def close_orders():
             except Exception:
                 pass
 
+    # 把今天所有正常訂單標為「結單」
+    mark_orders_closed()
     today_menu.clear()
 
 # ── 排程設定 ──────────────────────────────────────────
